@@ -1,0 +1,27 @@
+name: Deploy to Droplet
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Stop existing server (if running)
+        run: pkill -f "uvicorn main:app" || true
+
+      - name: Start server
+        run: |
+          nohup uv run uvicorn main:app --host 0.0.0.0 --port 8000 > ~/server.log 2>&1 &
+          disown
