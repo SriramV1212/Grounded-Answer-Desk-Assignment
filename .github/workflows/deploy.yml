@@ -18,10 +18,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Stop existing server (if running)
-        run: pkill -f "uvicorn main:app" || true
-
-      - name: Start server
-        run: |
-          nohup uv run uvicorn main:app --host 0.0.0.0 --port 8000 > ~/server.log 2>&1 &
-          disown
+      - name: Restart server
+        run: sudo systemctl restart fastapi
