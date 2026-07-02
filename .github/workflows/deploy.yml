@@ -18,5 +18,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Start Qdrant
+        run: docker compose -f infra/docker-compose.yml up -d
+
+      - name: Update OpenClaw
+        run: docker compose -f /opt/openclaw/docker-compose.yml up -d
+
+      - name: Restart MCP server
+        run: sudo systemctl restart mcp-server || true
+
       - name: Restart server
         run: sudo systemctl restart fastapi
