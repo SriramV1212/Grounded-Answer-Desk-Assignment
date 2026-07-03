@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Ingestion: raw corpus download (large, reproducible from source)
+ingestion/raw/

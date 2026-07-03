@@ -252,8 +252,9 @@ Confirmed by the developer after a real deploy:
 - `curl http://localhost:18789` still returns the OpenClaw Control UI (confirms OpenClaw untouched)
 - Push to main triggers workflow successfully
 
-### Step 2 — Ingestion
-- `python ingestion/verify.py` reports 400–600 vectors in `anthropic_docs` collection
+### Step 2 — Ingestion — ✅ COMPLETE AND VERIFIED
+Confirmed by the developer after a real run through the SSH tunnel:
+- `python ingestion/verify.py` reports 2,500–3,500 vectors in `anthropic_docs` collection (revised from an initial 400–600 estimate once real ingestion showed the live docs corpus is much denser per page than assumed — first 100 pages ≈ 850K tokens). Actual: 3,099 vectors.
 - Qdrant dashboard at `:6333/dashboard` shows collection with vectors
 
 ### Step 3 — MCP Server
