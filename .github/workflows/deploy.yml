@@ -22,7 +22,7 @@ jobs:
         run: docker compose -f infra/docker-compose.yml up -d
 
       - name: Update OpenClaw
-        run: docker compose -f /opt/openclaw/docker-compose.yml up -d
+        run: docker compose -f /opt/openclaw/docker-compose.yml up -d openclaw-gateway
 
       - name: Restart MCP server
         run: sudo systemctl restart mcp-server || true

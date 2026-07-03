@@ -12,7 +12,7 @@ This is an AI Engineer take-home assessment. Quality, architecture clarity, and 
 
 ## Development Workflow: Local vs Remote
 
-Claude Code runs locally on the developer's laptop, editing files in this local repo clone. The droplet is a separate remote machine, only reachable through the deploy pipeline — Claude Code does NOT SSH into the droplet to test-run or verify anything.
+Claude Code runs locally on the developer's laptop, editing files in this local repo clone. The droplet is a separate remote machine, only reachable through the deploy pipeline — Claude Code does NOT SSH into the droplet to test-run or verify anything, ever, for any purpose (including opening the local dev tunnel described below — that tunnel is opened by the developer, in their own terminal).
 
 **Per step, the workflow is:**
 1. Write/edit files locally in this repo
@@ -23,6 +23,28 @@ Claude Code runs locally on the developer's laptop, editing files in this local 
 6. The developer reports back the real verification results, and only then authorizes moving to the next step
 
 A step is never "done" until the developer confirms it after a real deploy — Claude Code should not claim something works on the droplet without that confirmation.
+
+### Droplet SSH user
+The developer's working SSH user on the droplet is `sriram` (with `sudo` for privileged commands). This is what's used for all real work: manual login, and the CI/CD self-hosted runner runs as this user. **Never suggest changing this to `root` anywhere in deploy scripts, systemd units, or CI/CD.** The one exception is the local dev SSH tunnel below, where either user works since it's just port-forwarding — use `sriram@DROPLET_IP` there too, for consistency.
+
+### Qdrant and OpenClaw: droplet-only, accessed locally via SSH tunnel
+Qdrant and OpenClaw run **only on the droplet** — this is the single source of truth. They are never installed or run locally on the developer's laptop.
+
+When the developer wants to run FastAPI or MCP server code locally (e.g. to test against real data during development), they reach the droplet's Qdrant and OpenClaw through an SSH tunnel:
+
+```
+ssh -L 6333:localhost:6333 -L 6334:localhost:6334 -L 18789:localhost:18789 sriram@DROPLET_IP
+```
+
+With that tunnel open in its own terminal window, `localhost:6333`, `localhost:6334`, and `localhost:18789` on the laptop transparently forward to the droplet's services. This means `QDRANT_URL` and `OPENCLAW_GATEWAY_URL` use the exact same `localhost` values whether the code is running locally (via tunnel) or actually deployed on the droplet — no config branching needed.
+
+**Whenever a step requires local FastAPI/MCP server code to reach Qdrant or OpenClaw on the droplet, call out the tunnel as a separate, clearly-labeled instruction** — not bundled into a list of other commands — e.g.:
+
+> Before testing this, open a new terminal window and run:
+> `ssh -L 6333:localhost:6333 -L 6334:localhost:6334 -L 18789:localhost:18789 sriram@DROPLET_IP`
+> Leave that window open for the duration of this session.
+
+Never suggest opening Qdrant's ports (6333/6334) to the public internet — Qdrant has no authentication by default, so the SSH tunnel is the only sanctioned way to reach it from the laptop.
 
 ---
 
@@ -53,18 +75,19 @@ A step is never "done" until the developer confirms it after a real deploy — C
 - **Provider:** DigitalOcean
 - **OS:** Ubuntu 22.04
 - **Size:** 2 vCPU / 4GB RAM
-- **User:** sriram
+- **User:** `sriram` (sudo for privileged commands) — this is the working/CI user; never switch to root. See "Droplet SSH user" above for the one exception (local dev tunnel).
 - **Package manager for Python:** `uv` (already installed)
 
 ### What's Already Working
+- **Step 1 (infrastructure) is complete and verified.**
 - FastAPI app running as systemd service named `fastapi`
 - Self-hosted GitHub Actions runner on the droplet
 - `uv sync --frozen` installs Python dependencies on deploy
 - `sudo systemctl restart fastapi` restarts the app on deploy
 - **Docker is installed and working**
-- **OpenClaw is already set up and running manually** via `/opt/openclaw/docker-compose.yml`, gateway healthy at `http://localhost:18789`, agent "main" registered. DO NOT redo OpenClaw onboarding. Only wire it into the CI/CD workflow so `docker compose up -d` in `/opt/openclaw` keeps it running/updated on future deploys.
+- **OpenClaw is already set up and running manually** via `/opt/openclaw/docker-compose.yml`, gateway healthy at `http://localhost:18789`, agent "main" registered. DO NOT redo OpenClaw onboarding. It's wired into the CI/CD workflow so `docker compose up -d` in `/opt/openclaw` keeps it running/updated on future deploys.
 - `ANTHROPIC_API_KEY` and `OPENCLAW_GATEWAY_TOKEN` are already set in GitHub Secrets
-- **Qdrant is NOT yet installed — this is the first thing to set up**
+- **Qdrant is running on the droplet** via `infra/docker-compose.yml` (Docker container, port 6333/6334), confirmed healthy. Qdrant runs only on the droplet — never locally; reach it from the laptop via the SSH tunnel described above.
 
 ### Ports in Use
 | Port | Service |
@@ -108,10 +131,10 @@ A step is never "done" until the developer confirms it after a real deploy — C
 - **Loaded in-process** inside the MCP server at startup — no separate embedding service
 
 ### Vector Store
-- **Qdrant** running in Docker
+- **Qdrant** running in Docker, droplet-only (see "Qdrant and OpenClaw: droplet-only" above)
 - **Collection name:** `anthropic_docs`
 - **Distance metric:** Cosine
-- **Access from Python:** `qdrant-client` library, connecting to `localhost:6333`
+- **Access from Python:** `qdrant-client` library, connecting to `localhost:6333` — identical whether the code runs on the droplet directly, or locally on the laptop with the SSH tunnel open
 
 ### MCP Server
 - **Language:** Python
@@ -222,8 +245,8 @@ On every push to main, the GitHub Actions workflow will:
 
 ## Step Completion Criteria
 
-### Step 1 — Infrastructure
-Run by the developer after pushing and deploying, not by Claude Code:
+### Step 1 — Infrastructure — ✅ COMPLETE AND VERIFIED
+Confirmed by the developer after a real deploy:
 - `docker compose -f infra/docker-compose.yml ps` shows Qdrant running
 - `curl http://localhost:6333/healthz` returns `{"title":"qdrant - healthy"}`
 - `curl http://localhost:18789` still returns the OpenClaw Control UI (confirms OpenClaw untouched)
