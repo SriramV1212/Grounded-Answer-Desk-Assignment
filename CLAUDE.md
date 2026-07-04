@@ -177,7 +177,7 @@ The GitHub Actions self-hosted runner + `.github/workflows/deploy.yml`. **Not re
 ### Agent
 - **OpenClaw** already running in Docker at `/opt/openclaw` (`ghcr.io/openclaw/openclaw:latest`), gateway at `http://localhost:18789`, agent named "main"
 - **LLM:** `claude-haiku-4-5` via Anthropic API
-- **MCP connection:** OpenClaw connects to MCP server at `http://localhost:8001`
+- **MCP connection:** OpenClaw registers the MCP server via `openclaw mcp add anthropic-docs --url http://host.docker.internal:8001/mcp --transport streamable-http`. **NOT `localhost:8001`** -- OpenClaw's docker-compose.yml uses normal bridge networking (not `network_mode: host`), with `extra_hosts: host.docker.internal:host-gateway` specifically so containers can reach host-side services. Since the MCP server runs as a native systemd process on the host (not in Docker), `localhost:8001` from inside the OpenClaw container would not resolve to it -- confirmed by reading OpenClaw's actual `docker-compose.yml`, not assumed. Verify this against the real deployed `/opt/openclaw/docker-compose.yml` (should match upstream) before trusting it blindly.
 - **SOUL.md:** Instructs the agent to ONLY answer from retrieved MCP context, cite sources, and abstain when retrieval scores are low
 
 ### FastAPI Orchestration Layer (main.py)

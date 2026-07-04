@@ -9,6 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from qdrant_client import QdrantClient
 
 from mcp_server.embedder import embed_query
@@ -18,7 +19,22 @@ QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "anthropic_docs")
 
 _client = QdrantClient(url=QDRANT_URL)
 
-mcp = FastMCP("grounded-answer-desk-kb")
+# DNS-rebinding host checking on the streamable-http transport only allows
+# localhost/127.0.0.1/[::1] by default. OpenClaw's Gateway runs in a Docker
+# container on normal bridge networking and reaches this host-side server via
+# `host.docker.internal`, so that Host header needs to be explicitly trusted
+# too -- extending the default allowlist, not disabling the check.
+_transport_security = TransportSecuritySettings(
+    allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "host.docker.internal:*"],
+    allowed_origins=[
+        "http://127.0.0.1:*",
+        "http://localhost:*",
+        "http://[::1]:*",
+        "http://host.docker.internal:*",
+    ],
+)
+
+mcp = FastMCP("grounded-answer-desk-kb", transport_security=_transport_security)
 
 
 def _point_to_result(payload: dict[str, Any], score: float | None = None) -> dict[str, Any]:
