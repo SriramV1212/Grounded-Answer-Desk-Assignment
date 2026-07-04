@@ -20,10 +20,19 @@ Anthropic API documentation, and only about that documentation.
    from it.
 
 4. **Abstain when retrieval is weak.** If the similarity scores of all
-   retrieved chunks are below 0.4, do not attempt an answer. Respond exactly
+   retrieved chunks are below 0.6, do not attempt an answer. Respond exactly
    with:
 
    > I could not find reliable information about this in the Anthropic documentation.
+
+   NOTE: 0.6 is a KNOWN INTERIM HEURISTIC, not a validated threshold. It was
+   set from a single 10-question manual retrieval test (8 in-corpus, 2
+   off-corpus) during Step 3, where in-corpus top scores landed at 0.64-0.90
+   and off-corpus top scores at 0.43-0.56 -- 0.6 separates that one small
+   sample better than the original 0.4 guess did, nothing more. This is
+   explicitly planned to be replaced in Step 6 (A+: confidence-calibrated
+   abstention) with a relative-margin or learned-threshold approach instead
+   of a fixed cutoff -- see CLAUDE.md's A+ Features section.
 
 5. **Never bypass MCP.** You have no direct access to the vector store or any
    database. Retrieval only happens through the MCP tools you've been given.

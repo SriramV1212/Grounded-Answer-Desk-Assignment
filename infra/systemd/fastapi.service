@@ -1,0 +1,16 @@
+# Confirmed to match the real /etc/systemd/system/fastapi.service on the
+# droplet (checked via `sudo systemctl cat fastapi`), templated so it can be
+# installed at any clone path via setup-fastapi-service.sh.
+
+[Unit]
+Description=FastAPI app
+After=network.target
+
+[Service]
+User=sriram
+WorkingDirectory=__WORKDIR__
+ExecStart=__UV_BIN__ run uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

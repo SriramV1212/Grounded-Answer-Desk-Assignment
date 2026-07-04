@@ -1,0 +1,16 @@
+[Unit]
+Description=Grounded Answer Desk MCP server
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=sriram
+WorkingDirectory=__WORKDIR__
+ExecStart=__UV_BIN__ run python -m mcp_server.server
+Restart=on-failure
+RestartSec=5
+Environment=QDRANT_URL=http://localhost:6333
+Environment=QDRANT_COLLECTION=anthropic_docs
+
+[Install]
+WantedBy=multi-user.target

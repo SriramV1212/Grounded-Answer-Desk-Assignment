@@ -25,7 +25,7 @@ jobs:
         run: docker compose -f /opt/openclaw/docker-compose.yml up -d openclaw-gateway
 
       - name: Restart MCP server
-        run: sudo systemctl restart mcp-server || true
+        run: sudo systemctl restart mcp-server
 
       - name: Restart server
         run: sudo systemctl restart fastapi
