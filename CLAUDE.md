@@ -224,14 +224,22 @@ This exists because OpenClaw's Gateway `/tools/invoke` endpoint — the mechanis
 
 ## Environment Variables
 
-### On the Droplet (set in `/etc/environment` or injected via systemd service file)
+### On the Droplet
+**Correction (Step 4 finding, confirmed against the real droplet):** `main.py` and `mcp_server/server.py` do NOT read from `/etc/environment`. `main.py` calls `load_dotenv()` on startup, which reads a `.env` file from `fastapi.service`'s `WorkingDirectory` (the repo clone root). Since `.env` is gitignored, it is **never created automatically** — `git clone`/`git pull` on a fresh droplet will not produce one. This must be created by hand, once, per droplet: `cp .env.example .env` then fill in real values (README's "Redeploying from scratch" step 3 does this explicitly). Skipping this doesn't fail loudly: `fastapi.service` starts fine and `/health` still works, but `OPENCLAW_GATEWAY_TOKEN` silently defaults to `""`, and the first `POST /ask` fails with `Illegal header value b'Bearer '` — this exact failure mode was hit and confirmed on the real droplet during Step 4 verification.
+
+`mcp-server.service` is the one exception: `QDRANT_URL` and `QDRANT_COLLECTION` are set directly via `Environment=` lines in `infra/systemd/mcp-server.service` (not `.env`), since the MCP server doesn't call `load_dotenv()`.
+
 ```
+# Read from .env by main.py's load_dotenv() (repo root, gitignored, created by hand):
 ANTHROPIC_API_KEY=sk-ant-...
-QDRANT_URL=http://localhost:6333
-QDRANT_COLLECTION=anthropic_docs
 MCP_SERVER_URL=http://localhost:8001
 OPENCLAW_GATEWAY_URL=http://localhost:18789
 OPENCLAW_GATEWAY_TOKEN=<generated during openclaw setup>
+OPENCLAW_AGENT_ID=main
+
+# Set directly via systemd Environment= in mcp-server.service:
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION=anthropic_docs
 ```
 
 ### In GitHub Secrets (Settings → Secrets → Actions)

@@ -33,14 +33,24 @@ cd ~/Grounded-Answer-Desk-Assignment
 uv sync --frozen
 ```
 
-### 3. Start Qdrant
+### 3. Create `.env` with real secrets
+
+```bash
+cp .env.example .env
+```
+
+Fill in `ANTHROPIC_API_KEY` now (you'll need it in the OpenClaw onboarding step below). Leave `OPENCLAW_GATEWAY_TOKEN` blank for now — it doesn't exist yet, and step 5 below tells you exactly when to come back and fill it in.
+
+**This step is easy to skip and will silently break `/ask` if you do.** `.env` is gitignored on purpose (never commit secrets), which means `git clone` never creates one on a fresh droplet — nothing else in this path creates it either. If you skip this, `fastapi.service` starts fine and `/health` still works, but any `POST /ask` will fail with an `Illegal header value b'Bearer '` error, because `main.py`'s `load_dotenv()` finds no `.env` file and `OPENCLAW_GATEWAY_TOKEN` silently defaults to an empty string. There's no startup-time check that catches this — the failure only shows up the first time you actually call `/ask`. If you hit that exact error, this is why: check `ls -la ~/Grounded-Answer-Desk-Assignment/.env` first.
+
+### 4. Start Qdrant
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d
 curl http://localhost:6333/healthz   # expect {"title":"qdrant - healthy"}
 ```
 
-### 4. Onboard OpenClaw (the one manual, interactive step)
+### 5. Onboard OpenClaw (the one manual, interactive step)
 
 Every other step in this path is a script or a single idempotent command. This one isn't, because OpenClaw's onboarding CLI is interactive by design — scripting a non-interactive workaround was considered and deliberately not done, since this step only ever runs once per droplet.
 
@@ -69,9 +79,9 @@ sudo docker compose -f /opt/openclaw/docker-compose.yml exec openclaw-gateway en
 curl http://localhost:18789   # expect the OpenClaw Control UI
 ```
 
-Save that token as `OPENCLAW_GATEWAY_TOKEN` in your `.env` (see `.env.example`).
+Save that token as `OPENCLAW_GATEWAY_TOKEN` in the `.env` file you created in step 3.
 
-### 5. Install the fastapi and mcp-server systemd services
+### 6. Install the fastapi and mcp-server systemd services
 
 ```bash
 cd ~/Grounded-Answer-Desk-Assignment
@@ -81,7 +91,7 @@ cd ~/Grounded-Answer-Desk-Assignment
 
 Both scripts template their `infra/systemd/*.service` file with the actual repo path and `uv` binary location, install it to `/etc/systemd/system/`, `daemon-reload`, `enable`, and start it. Both are idempotent. These are run **directly by hand here** — not through any CI/CD workflow (see "CI/CD pipeline" below for why that's a deliberate separation).
 
-### 6. Register the MCP server with OpenClaw
+### 7. Register the MCP server with OpenClaw
 
 With `mcp-server` now running (previous step), register it as a tool source for the "main" agent:
 
@@ -93,7 +103,7 @@ docker compose -f /opt/openclaw/docker-compose.yml run --rm openclaw-cli mcp pro
 
 Use `host.docker.internal`, not `localhost` — the OpenClaw gateway runs in a Docker container with normal bridge networking, and `mcp-server` runs natively on the host, so `localhost:8001` from inside the container would not resolve to it. The `probe` command should report 4 tools (`search_kb`, `get_source`, `list_sections`, `get_related`). This step is idempotent — re-running `mcp add` against an already-registered server is safe.
 
-### 7. Populate the knowledge base
+### 8. Populate the knowledge base
 
 ```bash
 uv run python ingestion/ingest.py
@@ -104,7 +114,7 @@ uv run python ingestion/verify.py
 
 Full ingestion, including first-time embedding model download (~550MB from HuggingFace) and processing ~3,100 chunks, completes in under 1 minute on a 2 vCPU/4GB droplet (benchmarked: 48 seconds, cold model cache).
 
-### 8. Verify everything
+### 9. Verify everything
 
 ```bash
 curl http://localhost:8000/health
@@ -134,6 +144,7 @@ The `/ask` response's `retrieved_chunks` field comes from an **independent call*
 | Step | Time |
 |---|---|
 | Docker + uv install | ~1-2 min |
+| Create `.env` | ~10 sec |
 | Qdrant up | ~30 sec |
 | OpenClaw image pull + interactive onboarding | **not precisely benchmarked** — depends on network speed and how quickly the prompts are answered by hand |
 | systemd service setup (both) | ~10 sec |
