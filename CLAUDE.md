@@ -33,15 +33,15 @@ Qdrant and OpenClaw run **only on the droplet** — this is the single source of
 When the developer wants to run FastAPI or MCP server code locally (e.g. to test against real data during development), they reach the droplet's Qdrant and OpenClaw through an SSH tunnel:
 
 ```
-ssh -L 6333:localhost:6333 -L 6334:localhost:6334 -L 18789:localhost:18789 sriram@DROPLET_IP
+ssh -L 6333:localhost:6333 -L 6334:localhost:6334 -L 18789:localhost:18789 -L 8001:localhost:8001 sriram@DROPLET_IP
 ```
 
-With that tunnel open in its own terminal window, `localhost:6333`, `localhost:6334`, and `localhost:18789` on the laptop transparently forward to the droplet's services. This means `QDRANT_URL` and `OPENCLAW_GATEWAY_URL` use the exact same `localhost` values whether the code is running locally (via tunnel) or actually deployed on the droplet — no config branching needed.
+With that tunnel open in its own terminal window, `localhost:6333`, `localhost:6334`, `localhost:18789`, and `localhost:8001` on the laptop transparently forward to the droplet's services. This means `QDRANT_URL`, `OPENCLAW_GATEWAY_URL`, and `MCP_SERVER_URL` use the exact same `localhost` values whether the code is running locally (via tunnel) or actually deployed on the droplet — no config branching needed. Port 8001 (MCP server) was added to the tunnel starting Step 4, once FastAPI's `/ask` endpoint began connecting directly to the MCP server (not just through OpenClaw) to source `retrieved_chunks` — see the "Retrieval inspector data fidelity" note below.
 
 **Whenever a step requires local FastAPI/MCP server code to reach Qdrant or OpenClaw on the droplet, call out the tunnel as a separate, clearly-labeled instruction** — not bundled into a list of other commands — e.g.:
 
 > Before testing this, open a new terminal window and run:
-> `ssh -L 6333:localhost:6333 -L 6334:localhost:6334 -L 18789:localhost:18789 sriram@DROPLET_IP`
+> `ssh -L 6333:localhost:6333 -L 6334:localhost:6334 -L 18789:localhost:18789 -L 8001:localhost:8001 sriram@DROPLET_IP`
 > Leave that window open for the duration of this session.
 
 Never suggest opening Qdrant's ports (6333/6334) to the public internet — Qdrant has no authentication by default, so the SSH tunnel is the only sanctioned way to reach it from the laptop.
@@ -167,7 +167,7 @@ The GitHub Actions self-hosted runner + `.github/workflows/deploy.yml`. **Not re
 - **Language:** Python
 - **Libraries:** `mcp` SDK + `fastapi` + `uvicorn`
 - **Port:** 8001
-- **Transport:** HTTP streamable-http (single `/mcp` endpoint) so OpenClaw can connect to it -- switched from SSE during Step 3 build. **TODO (Step 4):** verify OpenClaw's MCP client actually supports streamable-http before assuming it works. If it doesn't, switch back to SSE at that point -- flag it immediately rather than working around it silently.
+- **Transport:** HTTP streamable-http (single `/mcp` endpoint) -- switched from SSE during Step 3 build. **CONFIRMED (Step 4):** OpenClaw's MCP client supports streamable-http (`transport: "streamable-http"` in `openclaw mcp add`/`openclaw.json`); a full agent turn via `/v1/chat/completions` successfully calls `search_kb` over this transport. FastAPI's own direct connection to this server (see "Retrieval inspector data fidelity" below) also uses streamable-http, via the `mcp` Python SDK's `streamablehttp_client`.
 - **Tools exposed:**
   - `search_kb(query: str, top_k: int = 4)` — embed query, search Qdrant, return top-k chunks with scores and metadata
   - `get_source(chunk_id: str)` — return full chunk text by ID
@@ -182,7 +182,14 @@ The GitHub Actions self-hosted runner + `.github/workflows/deploy.yml`. **Not re
 
 ### FastAPI Orchestration Layer (main.py)
 - **Existing endpoint:** `GET /health` — keep this
-- **New endpoint:** `POST /ask` — receives question, calls OpenClaw gateway API, returns structured response including answer, citations, and raw retrieved chunks with scores for the inspector panel
+- **New endpoint:** `POST /ask` — receives question, calls OpenClaw gateway API for the grounded answer, and separately queries the MCP server directly for `retrieved_chunks`. Returns a structured response including answer, citations, raw retrieved chunks with scores for the inspector panel, and an `abstained` flag.
+
+#### Retrieval inspector data fidelity (Step 4 finding — read before assuming `retrieved_chunks` is a literal capture of the agent's tool call)
+`retrieved_chunks` is **not** a literal interception of the `search_kb` call the OpenClaw agent makes internally. It comes from a **second, independent call** that `main.py`'s `/ask` endpoint makes directly to our own MCP server (`http://localhost:8001/mcp`, via the `mcp` Python SDK's `streamablehttp_client`/`ClientSession` — the same pattern proven in `mcp_server/test_client.py`), using the user's exact question text and the same `top_k=4`.
+
+This exists because OpenClaw's Gateway `/tools/invoke` endpoint — the mechanism that would have let us fetch the agent's actual tool-call result — returns `404 Tool not available` for MCP-bundled tools in the currently deployed OpenClaw version. This was confirmed empirically (a full agent turn via `/v1/chat/completions` successfully calls `search_kb` and produces a correctly grounded, cited answer; the identical tool, called via `/tools/invoke`, 404s) and traced to an open upstream PR ("feat(gateway): wire coding tools into /tools/invoke HTTP surface") that had not landed as of this build. `/v1/responses` has the same limitation. OpenClaw's session transcript files (`<sessionId>.jsonl`) do contain the real internal tool-call result, but reading them was assessed as too operationally fragile for this project (undocumented internal format, requires session-ID correlation, not designed as a stable external API) relative to the alternative below.
+
+**Why this is safe, not just convenient:** the retrieval pipeline (embedding inference + Qdrant HNSW search) is fully deterministic given identical input — no randomness. `agent/SOUL.md` explicitly instructs the agent to pass the user's question to `search_kb` **verbatim, unparaphrased** (see SOUL.md rule 1) specifically so both calls search on identical text. Given that, the independent lookup is expected to return results identical to what the agent actually retrieved. The only residual risk is the agent failing to follow the verbatim-query instruction (e.g. reformulating or expanding the question before searching) — a narrow, disclosed limitation, not an unbounded "these are just similar, maybe" caveat. This is documented here and in the README rather than presented as a guaranteed-identical design, per the project's stance that the retrieval inspector must show the RAG genuinely working, not a black box.
 
 ### Frontend
 - **Framework:** Next.js (TypeScript)

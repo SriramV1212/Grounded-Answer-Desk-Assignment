@@ -81,7 +81,19 @@ cd ~/Grounded-Answer-Desk-Assignment
 
 Both scripts template their `infra/systemd/*.service` file with the actual repo path and `uv` binary location, install it to `/etc/systemd/system/`, `daemon-reload`, `enable`, and start it. Both are idempotent. These are run **directly by hand here** — not through any CI/CD workflow (see "CI/CD pipeline" below for why that's a deliberate separation).
 
-### 6. Populate the knowledge base
+### 6. Register the MCP server with OpenClaw
+
+With `mcp-server` now running (previous step), register it as a tool source for the "main" agent:
+
+```bash
+docker compose -f /opt/openclaw/docker-compose.yml run --rm openclaw-cli mcp add anthropic-docs \
+  --url http://host.docker.internal:8001/mcp --transport streamable-http
+docker compose -f /opt/openclaw/docker-compose.yml run --rm openclaw-cli mcp probe anthropic-docs --json
+```
+
+Use `host.docker.internal`, not `localhost` — the OpenClaw gateway runs in a Docker container with normal bridge networking, and `mcp-server` runs natively on the host, so `localhost:8001` from inside the container would not resolve to it. The `probe` command should report 4 tools (`search_kb`, `get_source`, `list_sections`, `get_related`). This step is idempotent — re-running `mcp add` against an already-registered server is safe.
+
+### 7. Populate the knowledge base
 
 ```bash
 uv run python ingestion/ingest.py
@@ -92,7 +104,7 @@ uv run python ingestion/verify.py
 
 Full ingestion, including first-time embedding model download (~550MB from HuggingFace) and processing ~3,100 chunks, completes in under 1 minute on a 2 vCPU/4GB droplet (benchmarked: 48 seconds, cold model cache).
 
-### 7. Verify everything
+### 8. Verify everything
 
 ```bash
 curl http://localhost:8000/health
@@ -100,7 +112,22 @@ curl http://localhost:6333/healthz
 sudo systemctl status mcp-server fastapi
 uv run python mcp_server/spot_check.py
 uv run python mcp_server/test_client.py
+
+# In-corpus question — expect a grounded answer with citations and real retrieved_chunks
+curl -X POST http://localhost:8000/ask -H 'Content-Type: application/json' \
+  -d '{"question":"How does prompt caching work?"}'
+
+# Off-corpus question — expect "abstained": true
+curl -X POST http://localhost:8000/ask -H 'Content-Type: application/json' \
+  -d '{"question":"What is the best pizza dough recipe?"}'
+
+# Malformed request — expect HTTP 400
+curl -i -X POST http://localhost:8000/ask -H 'Content-Type: application/json' -d '{"question":""}'
 ```
+
+#### A note on `retrieved_chunks` fidelity
+
+The `/ask` response's `retrieved_chunks` field comes from an **independent call** that FastAPI makes directly to the MCP server (using the same question text and `top_k=4` the agent uses), not from literally capturing the agent's internal tool call. This is because OpenClaw's `/tools/invoke` endpoint doesn't yet support MCP-bundled tools in the deployed version (confirmed via source + empirical testing — see `CLAUDE.md`'s "Retrieval inspector data fidelity" section for the full investigation). `agent/SOUL.md` instructs the agent to search using the user's question verbatim, and since retrieval is fully deterministic given identical input, this independent lookup is expected to match what the agent actually retrieved — with the one disclosed residual risk being the agent failing to search verbatim.
 
 ### Time budget
 
@@ -110,6 +137,7 @@ uv run python mcp_server/test_client.py
 | Qdrant up | ~30 sec |
 | OpenClaw image pull + interactive onboarding | **not precisely benchmarked** — depends on network speed and how quickly the prompts are answered by hand |
 | systemd service setup (both) | ~10 sec |
+| MCP server registration + probe | ~10 sec |
 | Ingestion + verify | **48 sec (benchmarked)** |
 | Final verification | ~10 sec |
 
