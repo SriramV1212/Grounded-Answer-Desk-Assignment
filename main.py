@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from pydantic import BaseModel
@@ -13,6 +14,25 @@ from pydantic import BaseModel
 load_dotenv()
 
 app = FastAPI()
+
+# Browser-facing frontend (Vercel) calls POST /ask directly from JS, so it needs
+# CORS headers -- curl/server-to-server calls don't. Explicit origin allowlist,
+# not allow_origins=["*"]: /ask has no auth of its own, so a wildcard would let
+# any website call it from a user's browser. Only the methods/headers this API
+# actually uses are allowed.
+# TODO: replace this placeholder with the real deployed Vercel URL once the
+# frontend is live, e.g. "https://grounded-answer-desk.vercel.app".
+FRONTEND_PROD_URL = "https://REPLACE-WITH-VERCEL-URL.vercel.app"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        FRONTEND_PROD_URL,
+    ],
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 
 OPENCLAW_GATEWAY_URL = os.environ.get("OPENCLAW_GATEWAY_URL", "http://localhost:18789")
 OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
