@@ -85,6 +85,18 @@ Every step except OpenClaw onboarding is a script or a single idempotent command
 
 The GitHub Actions self-hosted runner + `.github/workflows/deploy.yml`. **Not required for grading.** It assumes Tier 1 has already been run once on this specific droplet (systemd services already installed/enabled, OpenClaw already onboarded) and just automates restart-on-push for faster iteration during ongoing development. A grader following only the README's Tier 1 path never needs this to exist.
 
+### Tier 3 — HTTPS setup for live frontend demo (optional, decoupled from grading)
+
+`infra/scripts/setup-nginx-https.sh` installs nginx + Certbot in front of `fastapi.service` (port 8000) so a browser-hosted HTTPS frontend (the Vercel deployment) can call this backend without hitting mixed-content blocking. **Deliberately NOT part of Tier 1** -- the backend is fully gradable over plain HTTP (`curl http://<droplet-ip>:8000/ask`), so HTTPS is a frontend-demo concern, not a core-deliverable concern.
+
+This was originally conflated with the required path (an earlier draft had domain/nginx/Certbot steps inside "redeploy from scratch"), then deliberately split out in Step 5. Reasoning: DNS propagation and domain ownership are both outside a deployer's control -- a grader running Tier 1 on a brand-new droplet cannot be assumed to own a domain, or to have DNS propagate within the ~10 minute budget even if they did. Leaving HTTPS in Tier 1 would have made the "runner-agnostic, ~10 min" promise (Golden Rule 1) unachievable for anyone without a pre-existing, pre-propagated domain.
+
+The script accepts an optional `domain` argument:
+- **Domain provided** -- used directly (requires the caller to already own it and have pointed its A record at the droplet).
+- **No domain provided** -- auto-detects the droplet's public IP and builds a free `<ip>.sslip.io` hostname, which resolves with zero DNS setup, no purchase, no registration. This means Tier 3 is completable by anyone, not just someone who owns a real domain.
+
+The live personal demo for this project uses `sriramv.tech` (a domain the author owns) as the actual HTTPS hostname in front of the droplet -- this is the domain-argument path, not the sslip.io fallback. The fallback exists so a grader without domain ownership can still complete Tier 3 if they choose to.
+
 ---
 
 ## Repository
@@ -321,6 +333,9 @@ Confirmed by the developer after a real run through the SSH tunnel:
 
 ### Step 5 — Frontend
 - Vercel URL loads, question can be submitted, answer + inspector panel display correctly
+- **Tier 3 restructuring — ✅ DONE, verified end-to-end on the real droplet.** HTTPS/domain setup (nginx + Certbot) was pulled out of Tier 1 and into its own optional Tier 3, via `infra/scripts/setup-nginx-https.sh` (see "Deployment Model" above). Tier 1 remains fully self-contained over plain HTTP with no nginx/Certbot/domain references anywhere in it. Confirmed on the droplet: `./infra/scripts/setup-nginx-https.sh sriramv.tech` deployed a real Let's Encrypt cert and `curl https://api.sriramv.tech/health` returned `{"status":"ok",...}`.
+
+  **Bug found and fixed during that verification:** the script originally wrote its nginx config to a hardcoded filename (`sites-available/grounded-answer-desk`) instead of one derived from the actual hostname. On the droplet this collided with a pre-existing hand-written config at `sites-available/api.sriramv.tech` -- both declared `server_name api.sriramv.tech`, and nginx silently ignored one of them (`nginx: [warn] conflicting server name "api.sriramv.tech" on 0.0.0.0:80, ignored`) rather than erroring, which would have caused confusing "my edits aren't taking effect" bugs later. Fixed by keying the config filename (in both `sites-available/` and its `sites-enabled/` symlink) off the resolved `$DOMAIN`, so one hostname maps to exactly one config file and re-running the script regenerates rather than duplicates it.
 
 ### Step 6 — A+ features
 - Each feature has its own verification (listed in task description when we get there)

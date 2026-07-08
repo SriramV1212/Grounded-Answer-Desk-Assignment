@@ -2,15 +2,16 @@
 
 A RAG system that answers questions grounded in the Anthropic API docs. See `CLAUDE.md` for full architecture and `01-grounded-answer-desk.html` for the assignment brief.
 
-There are two separate deployment paths, covered in order below:
-- **Redeploying from scratch** — the required path, runner-agnostic, must complete in ~10 minutes. This is what a grader with a fresh droplet uses.
-- **CI/CD pipeline** — optional, developer-convenience only, not required for grading.
+There are three separate, non-overlapping deployment layers, covered in order below:
+- **Tier 1 — Redeploying from scratch (required, ~10 min)** — runner-agnostic, entirely over plain HTTP, no domain needed. This is what a grader with a fresh droplet uses, and it's fully self-contained: no nginx, no Certbot, no domain, anywhere in this path.
+- **Tier 2 — CI/CD pipeline (optional)** — developer convenience only, not required for grading.
+- **Tier 3 — HTTPS setup for live frontend demo (optional)** — only needed if you want to pair a Vercel-hosted (HTTPS) frontend with this backend; browsers block HTTPS pages from calling plain-HTTP APIs (mixed-content blocking), so this tier exists purely to satisfy that. Not required to satisfy any grading criterion on its own.
 
 Plus a separate **Frontend (Vercel)** section, since the frontend deploys independently of the droplet entirely.
 
 ---
 
-## Redeploying from scratch (required, ~10 min)
+## Tier 1 — Redeploying from scratch (required, ~10 min)
 
 Assumes nothing except a fresh Ubuntu 22.04 droplet and SSH access as a sudo-capable user. No self-hosted runner, no pre-installed Docker/uv, nothing pre-onboarded.
 
@@ -156,9 +157,9 @@ Everything except OpenClaw's image pull + interactive wizard is fast and measure
 
 ---
 
-## CI/CD pipeline (optional — developer convenience)
+## Tier 2 — CI/CD pipeline (optional — developer convenience)
 
-**Not required for grading.** This is a separate, optional layer for faster iteration during ongoing development — it assumes "Redeploying from scratch" above has already been run once on this droplet (systemd services installed, OpenClaw onboarded).
+**Not required for grading.** This is a separate, optional layer for faster iteration during ongoing development — it assumes Tier 1 above has already been run once on this droplet (systemd services installed, OpenClaw onboarded).
 
 A GitHub Actions self-hosted runner, registered on the droplet, executes `.github/workflows/deploy.yml` on every push to `main`:
 1. Pull latest code
@@ -174,6 +175,37 @@ Requires `ANTHROPIC_API_KEY` and `OPENCLAW_GATEWAY_TOKEN` set as GitHub Secrets 
 
 ---
 
+## Tier 3 — HTTPS setup for live frontend demo (optional)
+
+**Not required for grading, and not part of Tier 1.** The RAG backend itself works fully over plain HTTP — `curl http://<droplet-ip>:8000/ask` is sufficient to exercise and grade the whole system. This tier exists solely because browsers block a page served over HTTPS (like a Vercel deployment) from calling a plain-HTTP API — "mixed content" blocking. If you only want to grade or test the backend directly, skip this section entirely.
+
+If you *do* want to point a live Vercel frontend at this backend, run:
+
+```bash
+./infra/scripts/setup-nginx-https.sh [domain]
+```
+
+**With a domain you own** (e.g. `api.example.com`), pass it directly — but point its DNS A record at the droplet's public IP *before* running the script, or the certbot step will fail:
+```bash
+./infra/scripts/setup-nginx-https.sh api.example.com
+```
+
+**Without a domain**, run it with no argument:
+```bash
+./infra/scripts/setup-nginx-https.sh
+```
+The script auto-detects the droplet's public IP and builds a free [sslip.io](https://sslip.io) hostname from it (e.g. `143.198.51.2.sslip.io`), which resolves to that IP automatically — no DNS setup, no purchase, no registration. Anyone can complete this step at zero cost, regardless of whether they own a domain.
+
+Either way, the script:
+1. Installs `nginx` and `certbot` (+ `python3-certbot-nginx`)
+2. Writes an nginx reverse-proxy config forwarding the chosen hostname to `localhost:8000`
+3. Runs `certbot --nginx -d <hostname>` — **this step is interactive**: certbot asks for an email address (renewal notices) and whether to redirect HTTP to HTTPS (answer yes)
+4. Prints a `curl https://<hostname>/health` command to verify
+
+The live personal demo for this project uses `sriramv.tech` (a domain the author owns); a grader running this tier with no arguments gets an equivalent sslip.io hostname with identical behavior.
+
+---
+
 ## Frontend (Vercel)
 
 The frontend (`frontend/`, Next.js) deploys independently of the droplet, to Vercel's free tier.
@@ -186,7 +218,9 @@ The frontend (`frontend/`, Next.js) deploys independently of the droplet, to Ver
 2. **Set the environment variable** pointing the frontend at the droplet's public API. In the Vercel dashboard (Project → Settings → Environment Variables) or via CLI:
    ```bash
    vercel env add NEXT_PUBLIC_API_URL
-   # value: http://<droplet-public-ip>:8000
+   # value: http://<droplet-public-ip>:8000   (plain HTTP is fine for direct/API-level testing)
+   # or, after completing Tier 3 above:
+   # value: https://<hostname-from-tier-3>    (needed if the Vercel frontend will call this API from the browser)
    ```
 3. **Deploy to production:**
    ```bash
