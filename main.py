@@ -181,6 +181,16 @@ async def ask(request: AskRequest):
     abstained = (ABSTENTION_SENTENCE in answer) or low_confidence
     citations = [] if abstained else _build_citations(answer, retrieved_chunks)
 
+    # Even when low_confidence correctly flags abstained=True, the agent doesn't
+    # always actually abstain in its own text -- observed directly in testing
+    # (e.g. "What is the corpus about" returned all-low-score chunks but the
+    # agent answered anyway from general knowledge instead of refusing per
+    # SOUL.md rule 4). Overriding here makes FastAPI's response authoritative:
+    # the returned `answer` is guaranteed to say "not in my sources" whenever
+    # `abstained` is true, regardless of whether the LLM actually complied.
+    if abstained:
+        answer = ABSTENTION_SENTENCE
+
     return {
         "answer": answer,
         "citations": citations,
