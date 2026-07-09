@@ -20,9 +20,7 @@ app = FastAPI()
 # not allow_origins=["*"]: /ask has no auth of its own, so a wildcard would let
 # any website call it from a user's browser. Only the methods/headers this API
 # actually uses are allowed.
-# TODO: replace this placeholder with the real deployed Vercel URL once the
-# frontend is live, e.g. "https://grounded-answer-desk.vercel.app".
-FRONTEND_PROD_URL = "https://REPLACE-WITH-VERCEL-URL.vercel.app"
+FRONTEND_PROD_URL = "https://grounded-answer-desk-frontend.vercel.app"
 
 app.add_middleware(
     CORSMiddleware,
