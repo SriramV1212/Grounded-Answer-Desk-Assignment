@@ -47,7 +47,7 @@ source ~/.bashrc   # or open a new shell, so `uv` is on PATH
 ### 2. Clone the repo and install Python dependencies
 
 ```bash
-git clone <repo-url> ~/Grounded-Answer-Desk-Assignment
+git clone https://github.com/SriramV1212/Grounded-Answer-Desk-Assignment.git ~/Grounded-Answer-Desk-Assignment
 cd ~/Grounded-Answer-Desk-Assignment
 uv sync --frozen
 ```
@@ -122,6 +122,8 @@ cd ~/Grounded-Answer-Desk-Assignment
 
 Both scripts template their `infra/systemd/*.service` file with the actual repo path and `uv` binary location, install it to `/etc/systemd/system/`, `daemon-reload`, `enable`, and start it. Both are idempotent. These are run **directly by hand here** — not through any CI/CD workflow (see "CI/CD Pipeline Setup" below for why that's a deliberate separation).
 
+**Why systemd, not just running `uvicorn`/the MCP server directly in a terminal:** running either process in a foreground SSH session means it dies the moment that session disconnects — there's no supervision, no restart on crash, and nothing brings it back after a VPS reboot without someone manually SSH-ing in again. systemd fixes all three: `fastapi.service` restarts on any exit (`Restart=always`) and `mcp-server.service` restarts on a crash (`Restart=on-failure`, 5s backoff), `enable` means both start automatically on boot, and `systemctl status/restart` plus `journalctl -u fastapi` / `-u mcp-server` give standard, always-available process management and logs — the same way any real production service is run, not a `nohup`/`screen`/`tmux` workaround tied to a specific terminal session.
+
 ### 7. Register the MCP server with OpenClaw
 
 With `mcp-server` now running (previous step), register it as a tool source for the "main" agent:
@@ -192,6 +194,8 @@ I deliberately kept step 3 as its own clearly separated step rather than folding
 Deliberately, this workflow only *restarts* already-installed services — it never installs/enables systemd units or re-onboards OpenClaw, so a routine push can never silently change the system configuration. It also does **not** re-run ingestion; that stays a deliberate manual step.
 
 Requires `LLM_API_KEY` and `OPENCLAW_GATEWAY_TOKEN` set as GitHub Secrets (Settings → Secrets and variables → Actions), and a self-hosted runner registered against the repo.
+
+**Tip: install the runner itself as a systemd service too.** GitHub's self-hosted runner setup has you run `./config.sh` once (register the runner) and then `./run.sh` to actually start listening for jobs — but `./run.sh` runs in the foreground, so it only picks up workflow runs while that terminal/SSH session stays open. The runner package ships a `svc.sh` script for exactly this: `sudo ./svc.sh install` followed by `sudo ./svc.sh start` installs it as a systemd service (same reasoning as fastapi/mcp-server above — no dedicated terminal tab, survives disconnects and reboots, restarts on failure). Check status with `sudo ./svc.sh status`, or the usual `systemctl status actions.runner.*`.
 
 ---
 
