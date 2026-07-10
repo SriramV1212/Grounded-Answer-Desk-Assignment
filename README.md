@@ -1,5 +1,7 @@
 # Grounded Answer Desk
 
+**Live demo:** [grounded-answer-desk-frontend.vercel.app](https://grounded-answer-desk-frontend.vercel.app/)
+
 A retrieval-augmented generation (RAG) system that answers questions grounded in the Anthropic API documentation. A question comes in through a FastAPI backend, which orchestrates an OpenClaw agent that calls MCP tools to search a Qdrant vector store and returns a cited, grounded answer. The backend also queries the MCP server directly to surface the retrieved passages and their similarity scores, and a Next.js frontend renders the answer with inline citations alongside a retrieval inspector panel showing exactly what was retrieved.
 
 ## Tech Stack & Architecture
