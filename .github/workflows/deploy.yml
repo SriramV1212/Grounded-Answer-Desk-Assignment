@@ -18,6 +18,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Write .env from secrets
+        run: |
+          cat > .env <<EOF
+          LLM_API_KEY=${{ secrets.LLM_API_KEY }}
+          OPENCLAW_GATEWAY_TOKEN=${{ secrets.OPENCLAW_GATEWAY_TOKEN }}
+          OPENCLAW_GATEWAY_URL=http://localhost:18789
+          OPENCLAW_AGENT_ID=main
+          QDRANT_URL=http://localhost:6333
+          QDRANT_COLLECTION=anthropic_docs
+          MCP_SERVER_URL=http://localhost:8001
+          ALLOWED_ORIGINS=http://localhost:3000,https://grounded-answer-desk-frontend.vercel.app
+          EOF
+          chmod 600 .env
+
       - name: Start Qdrant
         run: docker compose -f infra/docker-compose.yml up -d
 

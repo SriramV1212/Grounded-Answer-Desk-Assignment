@@ -222,3 +222,11 @@ __marimo__/
 
 # Ingestion: raw corpus download (large, reproducible from source)
 ingestion/raw/
+
+# Local-only working files: kept on disk for local reference/development,
+# never tracked or pushed. CLAUDE.md is Claude Code's local project context
+# file; 01-grounded-answer-desk.html is a local copy of the original project
+# brief. Untracking these does not remove any prior committed versions from
+# git history -- see project notes if a history rewrite is ever needed.
+CLAUDE.md
+01-grounded-answer-desk.html

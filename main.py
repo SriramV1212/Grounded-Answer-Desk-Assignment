@@ -19,15 +19,15 @@ app = FastAPI()
 # CORS headers -- curl/server-to-server calls don't. Explicit origin allowlist,
 # not allow_origins=["*"]: /ask has no auth of its own, so a wildcard would let
 # any website call it from a user's browser. Only the methods/headers this API
-# actually uses are allowed.
-FRONTEND_PROD_URL = "https://grounded-answer-desk-frontend.vercel.app"
+# actually uses are allowed. Origins come from the ALLOWED_ORIGINS env var
+# (comma-separated) instead of being hardcoded here, so adding/changing a
+# frontend origin is a .env edit + restart, not a code change -- see
+# .env.example.
+ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        FRONTEND_PROD_URL,
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
